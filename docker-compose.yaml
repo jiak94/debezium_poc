@@ -1,0 +1,58 @@
+version: "3.5"
+x-amrrobot: &x-amrrobot
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      mode: non-blocking
+  user: rr
+  cap_add:
+    - SYS_PTRACE
+  pid: "host"
+services:
+  nats:
+    network_mode: host
+    image: 'nats-streaming:0.24.6'
+    ports:
+      - 4222:4222
+      - 8222:8222
+  
+  debezium:
+    network_mode: host
+    image: debezium/server:1.9.4.Final
+    environment:
+      - DEBEZIUM_SINK_TYPE=nats-streaming
+      - DEBEZIUM_SINK_NATS_STREAMING_URL=nats://localhost:4222
+      - DEBEZIUM_SINK_NATS_STREAMING_CLUSTER_ID=test-cluster
+      - DEBEZIUM_SINK_NATS_STREAMING_CLIENT_ID=debezium
+      - DEBEZIUM_SOURCE_DATABASE_HOSTNAME=localhost
+      - DEBEZIUM_SOURCE_DATABASE_PORT=5432
+      - DEBEZIUM_SOURCE_DATABASE_USER=postgres
+      - DEBEZIUM_SOURCE_DATABASE_PASSWORD=postgres
+      - DEBEZIUM_SOURCE_DATABASE_DBNAME=gwm_core
+      - DEBEZIUM_SOURCE_DATABASE_SERVER_NAME=gwm
+      - DEBEZIUM_SOURCE_SLOT_NAME=dbz_gwm
+      - DEBEZIUM_SOURCE_PLUGIN_NAME=pgoutput
+      - DEBEZIUM_SOURCE_CONNECTOR_CLASS=io.debezium.connector.postgresql.PostgresConnector
+      - DEBEZIUM_SOURCE_OFFSET_STORAGE=org.apache.kafka.connect.storage.FileOffsetBackingStore
+      - DEBEZIUM_SOURCE_OFFSET_STORAGE_FILE_FILENAME=data/offsets.dat
+      - DEBEZIUM_SOURCE_OFFSET_FLUSH_INTERVAL_MS=0
+      - QUARKUS_LOG_CONSOLE_JSON=false
+
+  db:
+    image: rrdockerhub/postgis:14-3.2-alpine
+    network_mode: host
+    environment:
+      - POSTGRES_MULTIPLE_DATABASES=poc
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - PGPORT=5432
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "5432"]
+      interval: 1s
+      timeout: 1m
+      retries: 60
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"
